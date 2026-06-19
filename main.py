@@ -12,10 +12,9 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp.server.sse import SseServerTransport
 
@@ -56,42 +55,33 @@ def require_bearer(credentials: HTTPAuthorizationCredentials = Depends(bearer_sc
         raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
 
 
-# ── Basic auth middleware (Web UI) ────────────────────────────────────────────
+# ── Basic auth (Web UI) ───────────────────────────────────────────────────────
 
-class WebUIAuth(BaseHTTPMiddleware):
-    WEB_PATHS = {"/", "/api/accounts"}
+basic_security = HTTPBasic()
 
-    async def dispatch(self, request: Request, call_next):
-        # Only protect web UI paths, not MCP or OAuth
-        if not any(request.url.path.startswith(p) for p in ["/", "/api/"]):
-            return await call_next(request)
-        if request.url.path.startswith("/auth/") or request.url.path.startswith("/mcp/"):
-            return await call_next(request)
 
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Basic "):
-            import base64
-            try:
-                decoded = base64.b64decode(auth[6:]).decode()
-                _, password = decoded.split(":", 1)
-                if secrets.compare_digest(password, settings.web_ui_password):
-                    return await call_next(request)
-            except Exception:
-                pass
-
-        return HTMLResponse(
+def require_basic_auth(credentials: HTTPBasicCredentials = Depends(basic_security)):
+    if not secrets.compare_digest(credentials.password, settings.web_ui_password):
+        raise HTTPException(
             status_code=401,
-            content="Unauthorized",
-            headers={"WWW-Authenticate": 'Basic realm="MCP Email Manager"'},
+            detail="Incorrect password",
+            headers={"WWW-Authenticate": "Basic"},
         )
-
-
-app.add_middleware(WebUIAuth)
 
 
 # ── MCP SSE ───────────────────────────────────────────────────────────────────
 
 sse_transport = SseServerTransport("/mcp/messages")
+
+
+class _TransportHandledResponse(Response):
+    """The MCP SSE transport writes the ASGI response itself. Returning this
+    no-op Response stops FastAPI from sending a second one, which would raise
+    'Unexpected ASGI message http.response.start ... after response already
+    completed'."""
+
+    async def __call__(self, scope, receive, send) -> None:
+        return
 
 
 @app.get("/mcp/sse", dependencies=[Depends(require_bearer)])
@@ -104,34 +94,37 @@ async def mcp_sse(request: Request):
             streams[1],
             mcp_server.create_initialization_options(),
         )
+    return _TransportHandledResponse()
 
 
 @app.post("/mcp/messages", dependencies=[Depends(require_bearer)])
 async def mcp_messages(request: Request):
-    return await sse_transport.handle_post_message(
+    await sse_transport.handle_post_message(
         request.scope, request.receive, request._send
     )
+    return _TransportHandledResponse()
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, _=Depends(require_basic_auth)):
     accounts = await database.list_accounts()
     return templates.TemplateResponse(
+        request,
         "index.html",
-        {"request": request, "accounts": accounts, "base_url": settings.base_url},
+        {"accounts": accounts, "base_url": settings.base_url},
     )
 
 
 # ── Account management API ────────────────────────────────────────────────────
 
-@app.get("/api/accounts")
+@app.get("/api/accounts", dependencies=[Depends(require_basic_auth)])
 async def api_list_accounts():
     return await database.list_accounts()
 
 
-@app.delete("/api/accounts/{email:path}")
+@app.delete("/api/accounts/{email:path}", dependencies=[Depends(require_basic_auth)])
 async def api_delete_account(email: str):
     deleted = await database.delete_account(email)
     if not deleted:
@@ -139,7 +132,7 @@ async def api_delete_account(email: str):
     return {"ok": True}
 
 
-@app.post("/api/accounts/imap")
+@app.post("/api/accounts/imap", dependencies=[Depends(require_basic_auth)])
 async def api_add_imap_account(
     email: str = Form(...),
     password: str = Form(...),

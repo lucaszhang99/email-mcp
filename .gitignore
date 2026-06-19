@@ -11,6 +11,12 @@ __pycache__/
 .venv/
 venv/
 env/
+Include/
+Lib/
+Scripts/
+bin/
+pyversion.txt
+pyvenv.cfg
 
 # Docker
 *.log

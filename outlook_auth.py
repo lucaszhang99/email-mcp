@@ -9,12 +9,14 @@ Flow:
 import msal
 from config import get_settings
 
+# Note: MSAL automatically adds the reserved scopes (offline_access, openid,
+# profile) — listing them here raises "You cannot use any scope value that is
+# reserved."
 SCOPES = [
     "https://graph.microsoft.com/Mail.Read",
     "https://graph.microsoft.com/Mail.ReadWrite",
     "https://graph.microsoft.com/Mail.Send",
     "https://graph.microsoft.com/User.Read",
-    "offline_access",
 ]
 
 

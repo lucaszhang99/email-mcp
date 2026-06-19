@@ -6,6 +6,7 @@ All sensitive fields are encrypted with Fernet (AES-128-CBC) using ENCRYPTION_KE
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from cryptography.fernet import Fernet
@@ -43,6 +44,11 @@ _session_factory = None
 async def init_db():
     global _engine, _session_factory
     settings = get_settings()
+
+    # Auto-create the data/ directory so SQLite can write the file
+    db_path = settings.database_url.replace("sqlite+aiosqlite:///", "")
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
     _engine = create_async_engine(settings.database_url, echo=False)
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
