@@ -1,0 +1,10 @@
+# Replace with your actual domain.
+# Caddy auto-provisions Let's Encrypt TLS — no manual cert setup needed.
+your-domain.com {
+    reverse_proxy app:8080
+}
+
+# ── Cloudflare Tunnel alternative ─────────────────────────────────────────────
+# If using Cloudflare Tunnel instead of a VPS domain, remove the block above
+# and run: cloudflared tunnel --url http://localhost:8080
+# Then set BASE_URL in .env to the tunnel URL.
