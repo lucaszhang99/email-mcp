@@ -1,0 +1,34 @@
+# Secrets — NEVER bake into the image
+.env
+*.env
+
+# Local database
+data/
+
+# Python venv living in the repo root + caches
+Include/
+Lib/
+Scripts/
+bin/
+pyvenv.cfg
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Git / CI / docs
+.git/
+.github/
+.gitignore
+.dockerignore
+README.md
+
+# Editor / OS
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
